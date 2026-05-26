@@ -1,0 +1,1233 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JSONL 编辑器</title>
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --panel: #ffffff;
+      --line: #dbe2ee;
+      --soft-line: #edf1f7;
+      --text: #182033;
+      --muted: #667085;
+      --blue: #3f63f3;
+      --blue-soft: #eef3ff;
+      --green: #157347;
+      --red: #d92d20;
+      --red-soft: #fff4f3;
+      --orange: #e5482e;
+      --shadow: 0 10px 28px rgba(16, 24, 40, 0.08);
+      font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--text); background: linear-gradient(180deg, #f7f9fc 0%, var(--bg) 100%); }
+    header {
+      height: 64px; display: flex; align-items: center; gap: 14px;
+      padding: 0 20px; background: rgba(255, 255, 255, 0.96); border-bottom: 1px solid var(--line);
+      box-shadow: 0 1px 0 rgba(16, 24, 40, 0.03);
+      position: sticky; top: 0; z-index: 2;
+    }
+    header strong { color: var(--blue); font-size: 20px; letter-spacing: 0; }
+    header span { color: var(--muted); font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    button, input, textarea, select {
+      font: inherit; border: 1px solid var(--line); border-radius: 6px; background: #fff;
+    }
+    button {
+      height: 36px; padding: 0 14px; cursor: pointer; color: var(--text);
+      transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+    }
+    button:hover { border-color: var(--blue); color: var(--blue); background: #f8faff; }
+    button.primary { background: var(--blue); border-color: var(--blue); color: #fff; box-shadow: 0 5px 14px rgba(63, 99, 243, 0.18); }
+    button.primary:hover { color: #fff; background: #3658de; border-color: #3658de; }
+    button.danger { color: var(--red); background: var(--red-soft); border-color: #ffd1cc; }
+    button.danger:hover { background: #ffecea; border-color: #ffb9b1; color: var(--red); }
+    button:disabled { cursor: not-allowed; opacity: 0.45; color: var(--muted); border-color: var(--line); }
+    button.small { height: 26px; padding: 0 8px; font-size: 12px; }
+    #fileInput, #templateImportInput { display: none; }
+    main {
+      height: calc(100vh - 64px);
+      display: grid; grid-template-columns: minmax(360px, var(--left-width, 44%)) 10px minmax(420px, 1fr); gap: 0;
+      padding: 14px;
+    }
+    .splitter {
+      min-width: 10px; cursor: col-resize; position: relative;
+    }
+    .splitter::before {
+      content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px;
+      background: var(--line); border-radius: 999px;
+    }
+    .splitter:hover::before, .splitter.dragging::before { background: var(--blue); }
+    .panel {
+      min-width: 0; min-height: 0; background: var(--panel); border: 1px solid var(--line);
+      border-radius: 8px; box-shadow: var(--shadow); display: flex; flex-direction: column;
+    }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); }
+    .main-toolbar {
+      align-items: center; gap: 10px; padding: 12px; background: #fbfcff;
+    }
+    .tool-group {
+      display: flex; align-items: center; gap: 8px; min-width: 0;
+      padding-right: 10px; border-right: 1px solid var(--soft-line);
+    }
+    .tool-group:last-child { border-right: 0; padding-right: 0; }
+    .tool-group.grow { flex: 1 1 280px; }
+    .tool-group.right { margin-left: auto; justify-content: flex-end; }
+    .notice {
+      padding: 9px 12px; color: #53627a; background: #f8fbff; border-bottom: 1px solid var(--soft-line);
+      font-size: 12px;
+    }
+    .searchbar {
+      display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 12px;
+      border-bottom: 1px solid var(--line); background: #ffffff;
+    }
+    .searchbar input { width: 100%; height: 36px; padding: 0 11px; border-radius: 7px; }
+    .left-body { min-height: 0; display: grid; grid-template-rows: auto var(--list-height, 220px) 8px 1fr; }
+    .row-splitter {
+      min-height: 8px; cursor: row-resize; position: relative; border-bottom: 1px solid var(--line);
+    }
+    .row-splitter::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 3px; height: 2px;
+      background: var(--line); border-radius: 999px;
+    }
+    .row-splitter:hover::before, .row-splitter.dragging::before { background: var(--blue); }
+    .record-list { overflow: auto; border-bottom: 1px solid var(--line); }
+    .record {
+      display: grid; grid-template-columns: 54px 1fr; gap: 8px; padding: 9px 10px;
+      border-bottom: 1px solid #edf0f5; cursor: pointer;
+    }
+    .record:hover { background: #f8faff; }
+    .record.active { background: #edf2ff; }
+    .record .idx { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .record .rid { color: var(--green); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .record .preview { grid-column: 2; color: var(--orange); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty {
+      height: 100%; display: grid; place-items: center; color: var(--muted);
+      padding: 28px; text-align: center; font-size: 14px; background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+    }
+    .raw-wrap { min-height: 0; display: grid; grid-template-rows: auto minmax(80px, var(--raw-height, 1fr)) 16px auto auto; }
+    .raw-wrap label, .tree-title { padding: 10px 12px; color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--soft-line); background: #fbfcff; }
+    .tree-title {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .tree-actions { display: flex; align-items: center; gap: 4px; }
+    button.icon {
+      width: 30px; height: 28px; padding: 0; display: grid; place-items: center;
+      border: 0; background: transparent; color: #2f3a4a; font-size: 21px; line-height: 1;
+    }
+    button.icon:hover { background: #eef2ff; color: var(--blue); border-color: transparent; }
+    button.icon:disabled { background: transparent; color: #a8b0bf; opacity: 1; }
+    #rawJson { min-height: 0; width: 100%; height: 100%; resize: none; border: 0; border-radius: 0; padding: 12px; font-family: Consolas, monospace; line-height: 1.45; background: #ffffff; }
+    .raw-splitter {
+      min-height: 16px; cursor: row-resize; position: relative; border-top: 1px solid #cfd6e3;
+      border-bottom: 1px solid #edf0f5; background: #f8fafc;
+    }
+    .raw-splitter::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 7px; height: 2px;
+      background: #aeb8c8; border-radius: 999px;
+    }
+    .raw-splitter:hover::before, .raw-splitter.dragging::before { background: var(--blue); }
+    .raw-wrap > .toolbar { cursor: row-resize; }
+    .raw-wrap > .toolbar button { cursor: pointer; }
+    .raw-error {
+      min-height: 18px; padding: 0 10px 6px; color: var(--red); font-size: 12px;
+      background: #fff;
+    }
+    .raw-error:empty { display: none; }
+    .tree { overflow: auto; padding: 14px 16px 24px; }
+    .node { margin: 6px 0 6px 20px; position: relative; }
+    .node::before { content: ""; position: absolute; left: -12px; top: -6px; bottom: 12px; border-left: 1px dotted #9ca3af; }
+    .node-row { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+    .key { flex: 0 0 150px; min-width: 110px; max-width: 220px; color: var(--green); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .colon { color: var(--muted); }
+    .value { color: var(--orange); flex: 1 1 420px; min-width: 160px; }
+    .value input, .value textarea, .value select { width: 100%; padding: 7px 9px; color: var(--orange); border-radius: 7px; border-color: #d7deea; }
+    .value textarea { min-height: 58px; resize: none; display: block; }
+    .node-row > select.small { flex: 0 0 74px; width: 74px; }
+    .node-row > button.small { flex: 0 0 auto; }
+    .text-resize-wrap { width: 100%; position: relative; }
+    .text-resize-handle {
+      height: 8px; margin-top: -8px; cursor: row-resize; position: relative; z-index: 1;
+      border-radius: 0 0 6px 6px;
+    }
+    .text-resize-handle::before {
+      content: ""; position: absolute; left: 8px; right: 8px; bottom: 2px; height: 2px;
+      background: transparent; border-radius: 999px;
+    }
+    .text-resize-handle:hover::before, .text-resize-handle.dragging::before { background: var(--blue); }
+    .toggle {
+      width: 18px; height: 18px; padding: 0; line-height: 16px; text-align: center;
+      border-radius: 3px; background: #f8fafc; color: var(--muted);
+    }
+    .children.collapsed { display: none; }
+    .array-note { color: #6d28d9; font-size: 12px; }
+    .status { margin-left: auto; color: var(--muted); font-size: 13px; }
+    .toast {
+      position: fixed; right: 16px; bottom: 16px; background: #111827; color: white;
+      padding: 10px 14px; border-radius: 8px; opacity: 0; transform: translateY(8px);
+      transition: 0.2s ease; pointer-events: none; z-index: 10;
+    }
+    .toast.show { opacity: 0.95; transform: translateY(0); }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, 0.28); display: none;
+      align-items: center; justify-content: center; z-index: 20; padding: 16px;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      width: min(760px, 100%); max-height: min(720px, calc(100vh - 32px)); background: #fff;
+      border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .modal-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 14px; border-bottom: 1px solid var(--line);
+    }
+    .modal-head strong { color: var(--text); }
+    .modal-body { padding: 14px; display: grid; gap: 12px; overflow: auto; }
+    .modal-body label { color: var(--muted); font-size: 13px; }
+    .modal-body select, .modal-body textarea, #addTemplateMode { width: 100%; padding: 7px 8px; }
+    #addTemplateMode { width: 180px; min-width: 180px; height: 36px; border-radius: 7px; }
+    .template-grid {
+      display: grid; grid-template-columns: 1fr 160px; gap: 10px; align-items: end;
+      padding: 12px; border: 1px solid var(--soft-line); border-radius: 8px; background: #f8fafc;
+    }
+    .template-grid .full { grid-column: 1 / -1; }
+    .template-section {
+      grid-column: 1 / -1; color: var(--text); font-weight: 700; font-size: 13px;
+      padding-top: 2px;
+    }
+    .template-grid input, .template-grid select, .template-grid textarea {
+      border-radius: 7px; border-color: #d7deea;
+    }
+    #templateJsonInput, #templatePreview {
+      min-height: 150px; resize: vertical; font-family: Consolas, monospace; line-height: 1.45;
+    }
+    .template-preview {
+      min-height: 180px; max-height: 320px; overflow: auto; margin: 0; padding: 10px;
+      border: 1px solid var(--line); border-radius: 6px; background: #fbfcff;
+      font-family: Consolas, monospace; font-size: 12px; line-height: 1.45; color: #334155;
+    }
+    .modal-actions {
+      display: flex; justify-content: flex-end; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--line);
+      background: #fafbff;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; height: auto; gap: 12px; }
+      .splitter { display: none; }
+      .panel { min-height: 520px; }
+      .key { min-width: 90px; }
+      .main-toolbar { align-items: stretch; }
+      .tool-group { flex: 1 1 100%; border-right: 0; padding-right: 0; }
+      .tool-group.right { margin-left: 0; justify-content: flex-start; }
+      #addTemplateMode { width: 100%; min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>JSONL 编辑器</strong>
+    <span id="fileInfo">未选择文件</span>
+    <span class="status" id="status"></span>
+  </header>
+  <main>
+    <section class="panel">
+      <div class="toolbar main-toolbar">
+        <input id="fileInput" type="file" accept=".jsonl,.json,application/json,text/plain" />
+        <div class="tool-group">
+          <button class="primary" id="openBtn">选择文件</button>
+          <button id="saveBtn">保存当前记录</button>
+        </div>
+        <div class="tool-group">
+          <button id="undoBtn" disabled>撤回</button>
+          <button id="redoBtn" disabled>重做</button>
+        </div>
+        <div class="tool-group grow">
+          <button id="addBtn">新增 JSON</button>
+          <select id="addTemplateMode" title="新增 JSON 使用的模板">
+            <option value="">不使用模板</option>
+          </select>
+          <button id="manageTemplatesBtn">模板管理</button>
+        </div>
+        <div class="tool-group right">
+          <button class="danger" id="deleteBtn">删除当前记录</button>
+          <button class="primary" id="exportBtn">导出 JSONL</button>
+        </div>
+      </div>
+      <div class="notice">隐私提示：文件只在你的浏览器中处理，不会上传到任何服务器。</div>
+      <div class="left-body">
+        <div class="searchbar">
+          <input id="searchInput" placeholder="搜索 id、文本、字段内容" />
+          <button id="clearSearchBtn">清空</button>
+        </div>
+        <div class="record-list" id="recordList"><div class="empty">选择 JSONL 文件开始编辑</div></div>
+        <div class="row-splitter" id="rowSplitter" title="拖动调整上下区域"></div>
+        <div class="raw-wrap">
+          <label>原始 JSON，可直接编辑后应用到右侧树形视图</label>
+          <textarea id="rawJson" spellcheck="false"></textarea>
+          <div class="raw-splitter" id="rawSplitter" title="拖动调整原始 JSON 编辑框高度"></div>
+          <div class="toolbar">
+            <button id="applyRawBtn">应用原始 JSON</button>
+            <button id="formatRawBtn">格式化</button>
+          </div>
+          <div class="raw-error" id="rawError"></div>
+        </div>
+      </div>
+    </section>
+    <div class="splitter" id="colSplitter" title="拖动调整左右区域"></div>
+    <section class="panel">
+      <div class="tree-title">
+        <span>树形编辑区</span>
+        <div class="tree-actions">
+          <button class="icon" id="treeUndoBtn" title="撤回 Ctrl+Z" disabled>↶</button>
+          <button class="icon" id="treeRedoBtn" title="重做 Ctrl+Y" disabled>↷</button>
+        </div>
+      </div>
+      <div class="tree" id="tree"></div>
+    </section>
+  </main>
+  <div class="modal-backdrop" id="templateModal">
+    <div class="modal">
+      <div class="modal-head">
+        <strong>模板管理</strong>
+        <button class="icon" id="templateCloseBtn" title="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="template-grid">
+          <div class="template-section">保存位置</div>
+          <label for="templateSlot">保存到</label>
+          <select id="templateSlot">
+            <option value="0">模板1</option>
+            <option value="1">模板2</option>
+            <option value="2">模板3</option>
+          </select>
+          <label class="full" for="templateNameInput">模板名称（不填则使用模板1/2/3）</label>
+          <input class="full" id="templateNameInput" placeholder="例如：胸部CT模板" />
+          <div class="template-section">提取来源</div>
+          <label class="full" for="templateSelect">从当前批次已有 JSON 提取</label>
+          <select class="full" id="templateSelect"></select>
+          <button id="saveExistingTemplateBtn">提取已有 JSON 到编辑区</button>
+          <button id="clearTemplateBtn">清空该模板</button>
+          <label class="full" for="templateJsonInput">或粘贴一段 JSON 提取模板</label>
+          <textarea class="full" id="templateJsonInput" spellcheck="false" placeholder='{"id":"demo","input":"..."}'></textarea>
+          <button class="full" id="savePastedTemplateBtn">提取粘贴 JSON 到编辑区</button>
+          <input id="templateImportInput" type="file" accept=".json,application/json" />
+          <button id="importTemplatesBtn">导入模板</button>
+          <button id="exportTemplatesBtn">导出模板</button>
+        </div>
+        <label>模板编辑区，可修改后保存</label>
+        <textarea class="template-preview" id="templatePreview" spellcheck="false"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="saveEditedTemplateBtn">保存当前编辑区为模板</button>
+        <button class="primary" id="templateDoneBtn">完成</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let records = [];
+    let selected = 0;
+    let current = {};
+    let sourceName = "edited.jsonl";
+    let undoStack = [];
+    let redoStack = [];
+    let filterQuery = "";
+    let draftTimer = null;
+    const maxHistory = 100;
+    const draftKey = "jsonlEditorDraft";
+
+    const $ = (id) => document.getElementById(id);
+
+    function toast(message) {
+      const el = $("toast");
+      el.textContent = message;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1800);
+    }
+
+    function clone(value) {
+      return structuredClone(value);
+    }
+
+    function snapshotState() {
+      return {
+        records: clone(records),
+        selected,
+        current: clone(current),
+        sourceName
+      };
+    }
+
+    function restoreState(state) {
+      records = clone(state.records);
+      selected = Math.min(state.selected, Math.max(records.length - 1, 0));
+      current = clone(state.current ?? records[selected] ?? {});
+      sourceName = state.sourceName || sourceName;
+      $("fileInfo").textContent = sourceName || "未选择文件";
+      $("rawJson").value = records.length ? JSON.stringify(current, null, 2) : "";
+      renderList();
+      renderTree();
+      updateHistoryButtons();
+      scheduleDraftSave();
+    }
+
+    function pushUndo(beforeState) {
+      undoStack.push(beforeState || snapshotState());
+      if (undoStack.length > maxHistory) undoStack.shift();
+      redoStack = [];
+      updateHistoryButtons();
+      scheduleDraftSave();
+    }
+
+    function saveDraftNow() {
+      if (!records.length) return;
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          records,
+          selected,
+          current,
+          sourceName,
+          rawText: $("rawJson").value,
+          savedAt: new Date().toISOString()
+        }));
+      } catch {
+        // Ignore storage limits; exporting remains the durable save.
+      }
+    }
+
+    function scheduleDraftSave() {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(saveDraftNow, 250);
+    }
+
+    function clearDraft() {
+      localStorage.removeItem(draftKey);
+    }
+
+    function maybeRestoreDraft() {
+      if (records.length) return false;
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return false;
+      try {
+        const draft = JSON.parse(raw);
+        if (!draft.records?.length) return false;
+        const when = draft.savedAt ? new Date(draft.savedAt).toLocaleString() : "上次";
+        if (!confirm(`发现${when}自动保存的草稿，是否恢复？`)) return false;
+        records = draft.records;
+        selected = Math.min(draft.selected || 0, records.length - 1);
+        current = draft.current || records[selected] || {};
+        sourceName = draft.sourceName || "restored_draft.jsonl";
+        $("fileInfo").textContent = `${sourceName}（草稿）`;
+        renderList();
+        selectRecord(selected);
+        if (draft.rawText) $("rawJson").value = draft.rawText;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function updateHistoryButtons() {
+      $("undoBtn").disabled = undoStack.length === 0;
+      $("redoBtn").disabled = redoStack.length === 0;
+      $("treeUndoBtn").disabled = undoStack.length === 0;
+      $("treeRedoBtn").disabled = redoStack.length === 0;
+    }
+
+    function undo() {
+      if (!undoStack.length) return;
+      redoStack.push(snapshotState());
+      restoreState(undoStack.pop());
+      toast("已撤回");
+    }
+
+    function redo() {
+      if (!redoStack.length) return;
+      undoStack.push(snapshotState());
+      restoreState(redoStack.pop());
+      toast("已重做");
+    }
+
+    function summarize(record) {
+      const text = String(record.input ?? record.evidence ?? record.suggestion ?? record.id ?? "");
+      return text.length > 120 ? text.slice(0, 120) + "..." : text;
+    }
+
+    function recordMatches(record, query) {
+      if (!query) return true;
+      return JSON.stringify(record, null, 0).toLowerCase().includes(query.toLowerCase());
+    }
+
+    function describeJsonError(text, err) {
+      const match = String(err.message).match(/position (\d+)/);
+      if (!match) return err.message;
+      const pos = Number(match[1]);
+      const before = text.slice(0, pos);
+      const line = before.split("\n").length;
+      const col = before.length - before.lastIndexOf("\n");
+      return `${err.message}（第 ${line} 行，第 ${col} 列）`;
+    }
+
+    function parseRawJson() {
+      const text = $("rawJson").value;
+      try {
+        const value = JSON.parse(text);
+        $("rawError").textContent = "";
+        return value;
+      } catch (err) {
+        const message = describeJsonError(text, err);
+        $("rawError").textContent = `JSON 格式错误：${message}`;
+        throw new Error(message);
+      }
+    }
+
+    function parseJsonl(content) {
+      const parsed = [];
+      content.split(/\r?\n/).forEach((line, index) => {
+        const text = line.trim();
+        if (!text) return;
+        try {
+          const item = JSON.parse(text);
+          if (!item || typeof item !== "object" || Array.isArray(item)) {
+            throw new Error("??? JSON ??");
+          }
+          parsed.push(item);
+        } catch (err) {
+          throw new Error(`第 ${index + 1} 行不是合法 JSON：${err.message}`);
+        }
+      });
+      return parsed;
+    }
+
+    function dumpsJsonl(items) {
+      return items.map((record) => JSON.stringify(record)).join("\\n") + (items.length ? "\\n" : "");
+    }
+
+    async function loadAll() {
+      records = [];
+      sourceName = "edited.jsonl";
+      selected = 0;
+      $("fileInfo").textContent = "未选择文件";
+      renderList();
+      maybeRestoreDraft();
+    }
+
+    function renderList() {
+      const list = $("recordList");
+      list.innerHTML = "";
+      if (!records.length) {
+        list.innerHTML = '<div class="empty">选择 JSONL 文件开始编辑</div>';
+      }
+      let shown = 0;
+      records.forEach((record, i) => {
+        if (!recordMatches(record, filterQuery)) return;
+        shown += 1;
+        const row = document.createElement("div");
+        row.className = "record" + (i === selected ? " active" : "");
+        row.onclick = () => selectRecord(i);
+        row.innerHTML = `
+          <div class="idx">#${i + 1}</div>
+          <div class="rid">${escapeHtml(record.id ?? "(无 id)")}</div>
+          <div class="preview">${escapeHtml(summarize(record))}</div>
+        `;
+        list.appendChild(row);
+      });
+      if (records.length && shown === 0) {
+        list.innerHTML = '<div class="empty">没有匹配的记录</div>';
+      }
+      $("status").textContent = filterQuery ? `${shown} / ${records.length} 条记录` : `${records.length} 条记录`;
+    }
+
+    function selectRecord(index) {
+      selected = index;
+      current = structuredClone(records[selected] ?? {});
+      $("rawJson").value = records.length ? JSON.stringify(current, null, 2) : "";
+      $("rawError").textContent = "";
+      renderList();
+      renderTree();
+      scheduleDraftSave();
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function pathGet(root, path) {
+      return path.reduce((acc, key) => acc == null ? undefined : acc[key], root);
+    }
+
+    function pathSet(root, path, value) {
+      let target = root;
+      for (let i = 0; i < path.length - 1; i++) target = target[path[i]];
+      target[path[path.length - 1]] = value;
+    }
+
+    function pathDelete(root, path) {
+      let target = root;
+      for (let i = 0; i < path.length - 1; i++) target = target[path[i]];
+      if (Array.isArray(target)) target.splice(path[path.length - 1], 1);
+      else delete target[path[path.length - 1]];
+    }
+
+    function defaultValue(kind) {
+      if (kind === "object") return {};
+      if (kind === "array") return [];
+      if (kind === "number") return 0;
+      if (kind === "boolean") return false;
+      return "";
+    }
+
+    function defaultRecord() {
+      return { id: `new-${Date.now()}`, input: "", expected_issues: [] };
+    }
+
+    function emptyFromTemplate(value, key = "") {
+      if (Array.isArray(value)) {
+        if (!value.length) return [];
+        return [emptyFromTemplate(value[0])];
+      }
+      if (value && typeof value === "object") {
+        return Object.fromEntries(Object.entries(value).map(([childKey, childValue]) => {
+          const nextValue = childKey === "id" ? `new-${Date.now()}` : emptyFromTemplate(childValue, childKey);
+          return [childKey, nextValue];
+        }));
+      }
+      if (typeof value === "number") return 0;
+      if (typeof value === "boolean") return false;
+      if (value === null) return null;
+      return key === "id" ? `new-${Date.now()}` : "";
+    }
+
+    function templateLabel(record, index) {
+      const id = record.id == null ? "(无 id)" : String(record.id);
+      const preview = summarize(record);
+      return `#${index + 1}  ${id}${preview && preview !== id ? "  -  " + preview : ""}`;
+    }
+
+    function templateRecordFromSelection() {
+      const index = Number($("templateSelect").value);
+      return emptyFromTemplate(records[index] ?? records[selected] ?? defaultRecord());
+    }
+
+    function loadSavedTemplates() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem("jsonlEditorTemplates") || "[]");
+        return Array.from({ length: 3 }, (_, index) => {
+          const item = parsed[index];
+          if (!item) return null;
+          if (item.data) {
+            return { name: item.name || `模板${index + 1}`, data: item.data };
+          }
+          return { name: `模板${index + 1}`, data: item };
+        });
+      } catch {
+        return [null, null, null];
+      }
+    }
+
+    function saveTemplates(templates) {
+      localStorage.setItem("jsonlEditorTemplates", JSON.stringify(templates));
+    }
+
+    function exportTemplates() {
+      const templates = loadSavedTemplates();
+      const blob = new Blob([JSON.stringify(templates, null, 2)], { type: "application/json" });
+      downloadBlob(blob, "jsonl_editor_templates.json");
+    }
+
+    async function importTemplatesFile(file) {
+      try {
+        const parsed = JSON.parse(await file.text());
+        if (!Array.isArray(parsed)) throw new Error("模板文件必须是数组");
+        const normalized = Array.from({ length: 3 }, (_, index) => {
+          const item = parsed[index];
+          if (!item) return null;
+          if (item.data) return { name: item.name || `模板${index + 1}`, data: item.data };
+          return { name: `模板${index + 1}`, data: item };
+        });
+        saveTemplates(normalized);
+        updateTemplateModeSelect();
+        refreshTemplatePreview();
+        toast("模板已导入");
+      } catch (err) {
+        alert("模板导入失败：" + err.message);
+      }
+    }
+
+    function updateTemplateModeSelect() {
+      const templates = loadSavedTemplates();
+      const currentValue = $("addTemplateMode").value;
+      $("addTemplateMode").innerHTML = '<option value="">不使用模板</option>';
+      templates.forEach((template, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = template ? template.name : `模板${index + 1}（空）`;
+        option.disabled = !template;
+        $("addTemplateMode").appendChild(option);
+      });
+      if ([...$("addTemplateMode").options].some((option) => option.value === currentValue && !option.disabled)) {
+        $("addTemplateMode").value = currentValue;
+      }
+    }
+
+    function refreshTemplatePreview() {
+      const templates = loadSavedTemplates();
+      const slot = Number($("templateSlot").value || 0);
+      const saved = templates[slot];
+      $("templateNameInput").value = saved?.name || "";
+      $("templatePreview").value = saved
+        ? JSON.stringify(emptyFromTemplate(saved.data), null, 2)
+        : "";
+    }
+
+    function openTemplateModal() {
+      const select = $("templateSelect");
+      select.innerHTML = "";
+      if (!records.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "当前批次还没有可提取的 JSON";
+        select.appendChild(option);
+      } else {
+        records.forEach((record, index) => {
+          const option = document.createElement("option");
+          option.value = String(index);
+          option.textContent = templateLabel(record, index);
+          select.appendChild(option);
+        });
+        select.value = String(selected);
+      }
+      $("templateJsonInput").value = "";
+      refreshTemplatePreview();
+      $("templateModal").classList.add("show");
+    }
+
+    function closeTemplateModal() {
+      $("templateModal").classList.remove("show");
+    }
+
+    async function addRecord(record, message) {
+      const beforeState = snapshotState();
+      records.push(record);
+      pushUndo(beforeState);
+      selectRecord(records.length - 1);
+      scheduleDraftSave();
+      toast(message);
+    }
+
+    async function addFromSelectedMode() {
+      const mode = $("addTemplateMode").value;
+      const templates = loadSavedTemplates();
+      const template = mode === "" ? null : templates[Number(mode)];
+      await addRecord(template ? emptyFromTemplate(template.data) : defaultRecord(), template ? `已按${template.name}新增` : "已按默认方式新增");
+    }
+
+    function saveTemplateFromRecord() {
+      if (!records.length || $("templateSelect").value === "") {
+        alert("当前批次没有可提取的 JSON");
+        return;
+      }
+      $("templatePreview").value = JSON.stringify(emptyFromTemplate(records[Number($("templateSelect").value)]), null, 2);
+      toast("已提取到编辑区，可修改后保存");
+    }
+
+    function saveTemplateFromPastedJson() {
+      try {
+        const parsed = JSON.parse($("templateJsonInput").value);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("模板必须是 JSON 对象");
+        }
+        $("templatePreview").value = JSON.stringify(emptyFromTemplate(parsed), null, 2);
+        toast("已提取到编辑区，可修改后保存");
+      } catch (err) {
+        alert("粘贴的 JSON 格式错误：" + err.message);
+      }
+    }
+
+    function saveEditedTemplate() {
+      try {
+        const parsed = JSON.parse($("templatePreview").value);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("模板必须是 JSON 对象");
+        }
+        const slot = Number($("templateSlot").value || 0);
+        const templates = loadSavedTemplates();
+        const name = $("templateNameInput").value.trim() || `模板${slot + 1}`;
+        templates[slot] = { name, data: parsed };
+        saveTemplates(templates);
+        updateTemplateModeSelect();
+        refreshTemplatePreview();
+        toast(`已保存为${name}`);
+      } catch (err) {
+        alert("编辑区 JSON 格式错误：" + err.message);
+      }
+    }
+
+    function clearSelectedTemplate() {
+      const slot = Number($("templateSlot").value || 0);
+      const templates = loadSavedTemplates();
+      templates[slot] = null;
+      saveTemplates(templates);
+      updateTemplateModeSelect();
+      refreshTemplatePreview();
+      toast(`已清空模板${slot + 1}`);
+    }
+
+    function renderTree() {
+      const tree = $("tree");
+      tree.innerHTML = "";
+      if (!records.length) {
+        tree.innerHTML = '<div class="empty">还没有载入记录</div>';
+        return;
+      }
+      const root = document.createElement("div");
+      root.className = "node";
+      root.appendChild(renderNode("JSON", current, []));
+      tree.appendChild(root);
+    }
+
+    function renderNode(key, value, path) {
+      const wrap = document.createElement("div");
+      const isObject = value && typeof value === "object" && !Array.isArray(value);
+      const isArray = Array.isArray(value);
+      const row = document.createElement("div");
+      row.className = "node-row";
+
+      if (isObject || isArray) {
+        const toggle = document.createElement("button");
+        toggle.className = "toggle";
+        toggle.textContent = "-";
+        row.appendChild(toggle);
+        row.insertAdjacentHTML("beforeend", `<span class="key">${escapeHtml(key)}</span><span class="colon">:</span>`);
+
+        const note = document.createElement("span");
+        note.className = "array-note";
+        note.textContent = isArray ? `Array(${value.length})` : "Object";
+        row.appendChild(note);
+
+        const add = document.createElement("button");
+        add.className = "small";
+        add.textContent = isArray ? "加一项" : "加字段";
+        add.onclick = () => addChild(path, isArray);
+        row.appendChild(add);
+
+        if (path.length) {
+          const del = document.createElement("button");
+          del.className = "small danger";
+          del.textContent = "删除";
+          del.onclick = () => { pushUndo(); pathDelete(current, path); syncRaw(); renderTree(); };
+          row.appendChild(del);
+        }
+
+        const children = document.createElement("div");
+        children.className = "children";
+        const entries = isArray ? value.map((v, i) => [i, v]) : Object.entries(value);
+        entries.forEach(([childKey, childValue]) => {
+          const childWrap = document.createElement("div");
+          childWrap.className = "node";
+          childWrap.appendChild(renderNode(String(childKey), childValue, path.concat(childKey)));
+          children.appendChild(childWrap);
+        });
+        toggle.onclick = () => {
+          children.classList.toggle("collapsed");
+          toggle.textContent = children.classList.contains("collapsed") ? "+" : "-";
+        };
+        wrap.appendChild(row);
+        wrap.appendChild(children);
+        return wrap;
+      }
+
+      row.innerHTML = `<span style="width:18px"></span><span class="key">${escapeHtml(key)}</span><span class="colon">:</span>`;
+      const valueCell = document.createElement("span");
+      valueCell.className = "value";
+
+      if (typeof value === "boolean") {
+        const select = document.createElement("select");
+        select.innerHTML = '<option value="true">true</option><option value="false">false</option>';
+        select.value = String(value);
+        select.onchange = () => { pushUndo(); pathSet(current, path, select.value === "true"); syncRaw(); };
+        valueCell.appendChild(select);
+      } else if (typeof value === "number") {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = value;
+        bindInputHistory(input, () => { pathSet(current, path, Number(input.value)); syncRaw(); });
+        valueCell.appendChild(input);
+      } else if (value === null) {
+        const input = document.createElement("input");
+        input.value = "null";
+        bindInputHistory(input, () => { pathSet(current, path, input.value === "null" ? null : input.value); syncRaw(); });
+        valueCell.appendChild(input);
+      } else {
+        const text = String(value ?? "");
+        const input = document.createElement(text.length > 80 ? "textarea" : "input");
+        input.value = text;
+        bindInputHistory(input, () => { pathSet(current, path, input.value); syncRaw(); });
+        if (input.tagName === "TEXTAREA") {
+          valueCell.appendChild(makeResizableTextarea(input));
+        } else {
+          valueCell.appendChild(input);
+        }
+      }
+      row.appendChild(valueCell);
+
+      const type = document.createElement("select");
+      type.className = "small";
+      type.innerHTML = '<option value="string">文本</option><option value="number">数字</option><option value="boolean">布尔</option><option value="object">对象</option><option value="array">数组</option>';
+      type.onchange = () => { pushUndo(); pathSet(current, path, defaultValue(type.value)); syncRaw(); renderTree(); };
+      row.appendChild(type);
+
+      if (path.length) {
+        const del = document.createElement("button");
+        del.className = "small danger";
+        del.textContent = "删除";
+          del.onclick = () => { pushUndo(); pathDelete(current, path); syncRaw(); renderTree(); };
+        row.appendChild(del);
+      }
+      wrap.appendChild(row);
+      return wrap;
+    }
+
+    function addChild(path, isArray) {
+      const target = path.length ? pathGet(current, path) : current;
+      const beforeState = snapshotState();
+      if (isArray) {
+        target.push({});
+      } else {
+        const key = prompt("请输入字段名", "new_field");
+        if (!key) return;
+        if (Object.prototype.hasOwnProperty.call(target, key) && !confirm("字段已存在，是否覆盖？")) return;
+        target[key] = "";
+      }
+      pushUndo(beforeState);
+      syncRaw();
+      renderTree();
+    }
+
+    function syncRaw() {
+      $("rawJson").value = JSON.stringify(current, null, 2);
+      $("rawError").textContent = "";
+      scheduleDraftSave();
+    }
+
+    function bindInputHistory(input, applyValue) {
+      input.onfocus = () => {
+        input._beforeState = snapshotState();
+        input._dirty = false;
+      };
+      input.oninput = () => {
+        if (!input._dirty) {
+          pushUndo(input._beforeState || snapshotState());
+          input._dirty = true;
+        }
+        applyValue();
+      };
+    }
+
+    function makeResizableTextarea(textarea) {
+      const wrap = document.createElement("div");
+      const handle = document.createElement("div");
+      wrap.className = "text-resize-wrap";
+      handle.className = "text-resize-handle";
+      handle.title = "拖动调整文本框高度";
+      wrap.appendChild(textarea);
+      wrap.appendChild(handle);
+
+      handle.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        handle.classList.add("dragging");
+        const startY = event.clientY;
+        const startHeight = textarea.getBoundingClientRect().height;
+        const onMove = (moveEvent) => {
+          const nextHeight = Math.max(58, startHeight + moveEvent.clientY - startY);
+          textarea.style.height = `${nextHeight}px`;
+        };
+        const onUp = () => {
+          handle.classList.remove("dragging");
+          handle.removeEventListener("pointermove", onMove);
+          handle.removeEventListener("pointerup", onUp);
+        };
+        handle.addEventListener("pointermove", onMove);
+        handle.addEventListener("pointerup", onUp);
+      });
+      return wrap;
+    }
+
+    async function syncServerRecords() {
+      saveDraftNow();
+    }
+
+    function defaultExportName() {
+      return sourceName.replace(/(\.jsonl|\.json)?$/i, "_edited.jsonl");
+    }
+
+    function downloadBlob(blob, filename) {
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(link.href);
+    }
+
+    async function saveBlobWithPicker(blob, filename) {
+      if (!window.showSaveFilePicker) return false;
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: "JSONL 文件",
+          accept: { "application/jsonl": [".jsonl"], "application/json": [".json"] }
+        }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return true;
+    }
+
+    $("undoBtn").onclick = undo;
+    $("redoBtn").onclick = redo;
+    $("treeUndoBtn").onclick = undo;
+    $("treeRedoBtn").onclick = redo;
+    $("templateSlot").onchange = refreshTemplatePreview;
+    $("templateSelect").onchange = () => {
+      if (records.length && $("templateSelect").value !== "") {
+        $("templatePreview").value = JSON.stringify(emptyFromTemplate(records[Number($("templateSelect").value)]), null, 2);
+      }
+    };
+    $("templateCloseBtn").onclick = closeTemplateModal;
+    $("templateDoneBtn").onclick = closeTemplateModal;
+    $("saveExistingTemplateBtn").onclick = saveTemplateFromRecord;
+    $("savePastedTemplateBtn").onclick = saveTemplateFromPastedJson;
+    $("saveEditedTemplateBtn").onclick = saveEditedTemplate;
+    $("clearTemplateBtn").onclick = clearSelectedTemplate;
+    $("exportTemplatesBtn").onclick = exportTemplates;
+    $("importTemplatesBtn").onclick = () => $("templateImportInput").click();
+    $("templateImportInput").onchange = async () => {
+      const file = $("templateImportInput").files[0];
+      if (file) await importTemplatesFile(file);
+      $("templateImportInput").value = "";
+    };
+    $("templateModal").onclick = (event) => {
+      if (event.target === $("templateModal")) closeTemplateModal();
+    };
+
+    $("openBtn").onclick = () => $("fileInput").click();
+    $("searchInput").oninput = () => {
+      filterQuery = $("searchInput").value.trim();
+      renderList();
+    };
+    $("clearSearchBtn").onclick = () => {
+      filterQuery = "";
+      $("searchInput").value = "";
+      renderList();
+    };
+    $("rawJson").oninput = () => {
+      $("rawError").textContent = "";
+      scheduleDraftSave();
+    };
+
+    $("fileInput").onchange = async () => {
+      const file = $("fileInput").files[0];
+      if (!file) return;
+      try {
+        const content = await file.text();
+        records = parseJsonl(content);
+        sourceName = file.name;
+        selected = 0;
+        undoStack = [];
+        redoStack = [];
+        $("fileInfo").textContent = file.name;
+        selectRecord(0);
+        updateHistoryButtons();
+        scheduleDraftSave();
+        toast(`已载入 ${records.length} 条记录`);
+      } catch (err) {
+        alert("载入失败：" + err.message);
+      } finally {
+        $("fileInput").value = "";
+      }
+    };
+
+    $("applyRawBtn").onclick = () => {
+      try {
+        const beforeState = snapshotState();
+        current = parseRawJson();
+        pushUndo(beforeState);
+        renderTree();
+        scheduleDraftSave();
+        toast("已应用到右侧");
+      } catch (err) {
+        alert("JSON 格式错误：" + err.message);
+      }
+    };
+
+    $("formatRawBtn").onclick = () => {
+      try {
+        $("rawJson").value = JSON.stringify(parseRawJson(), null, 2);
+        scheduleDraftSave();
+      } catch (err) {
+        alert("JSON 格式错误：" + err.message);
+      }
+    };
+
+    $("saveBtn").onclick = async () => {
+      if (!records.length) return;
+      try {
+        const beforeState = snapshotState();
+        current = parseRawJson();
+        records[selected] = structuredClone(current);
+        pushUndo(beforeState);
+        renderList();
+        renderTree();
+        scheduleDraftSave();
+        toast("当前记录已保存到内存");
+      } catch (err) {
+        alert("保存失败：" + err.message);
+      }
+    };
+
+    $("manageTemplatesBtn").onclick = openTemplateModal;
+    $("addBtn").onclick = () => {
+      addFromSelectedMode().catch((err) => alert("新增失败：" + err.message));
+    };
+
+    $("deleteBtn").onclick = async () => {
+      if (!records.length) return;
+      if (!confirm(`确认删除第 ${selected + 1} 条？`)) return;
+      const beforeState = snapshotState();
+      records.splice(selected, 1);
+      selected = Math.min(selected, Math.max(records.length - 1, 0));
+      pushUndo(beforeState);
+      selectRecord(selected);
+      toast("已删除当前记录");
+    };
+
+    $("exportBtn").onclick = async () => {
+      try {
+        if (records.length) {
+          current = parseRawJson();
+          records[selected] = structuredClone(current);
+        }
+        await syncServerRecords();
+        const blob = new Blob([dumpsJsonl(records)], { type: "application/jsonl;charset=utf-8" });
+        const filename = defaultExportName();
+        try {
+          const saved = await saveBlobWithPicker(blob, filename);
+          if (!saved) downloadBlob(blob, filename);
+          clearDraft();
+          toast("已导出 JSONL");
+        } catch (err) {
+          if (err.name !== "AbortError") throw err;
+        }
+      } catch (err) {
+        alert("导出失败：" + err.message);
+      }
+    };
+
+    function initSplitters() {
+      const main = document.querySelector("main");
+      const leftBody = document.querySelector(".left-body");
+      const rawWrap = document.querySelector(".raw-wrap");
+      const colSplitter = $("colSplitter");
+      const rowSplitter = $("rowSplitter");
+      const rawSplitter = $("rawSplitter");
+      const rawToolbar = rawWrap.querySelector(".toolbar");
+
+      colSplitter.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        colSplitter.setPointerCapture(event.pointerId);
+        colSplitter.classList.add("dragging");
+        const onMove = (moveEvent) => {
+          const rect = main.getBoundingClientRect();
+          const minLeft = 360;
+          const minRight = 420;
+          const width = rect.width - 24;
+          const next = Math.min(Math.max(moveEvent.clientX - rect.left, minLeft), width - minRight);
+          main.style.setProperty("--left-width", `${next}px`);
+        };
+        const onUp = () => {
+          colSplitter.classList.remove("dragging");
+          colSplitter.removeEventListener("pointermove", onMove);
+          colSplitter.removeEventListener("pointerup", onUp);
+        };
+        colSplitter.addEventListener("pointermove", onMove);
+        colSplitter.addEventListener("pointerup", onUp);
+      });
+
+      rowSplitter.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        rowSplitter.setPointerCapture(event.pointerId);
+        rowSplitter.classList.add("dragging");
+        const onMove = (moveEvent) => {
+          const rect = leftBody.getBoundingClientRect();
+          const minTop = 80;
+          const minBottom = 140;
+          const next = Math.min(Math.max(moveEvent.clientY - rect.top, minTop), rect.height - minBottom);
+          leftBody.style.setProperty("--list-height", `${next}px`);
+        };
+        const onUp = () => {
+          rowSplitter.classList.remove("dragging");
+          rowSplitter.removeEventListener("pointermove", onMove);
+          rowSplitter.removeEventListener("pointerup", onUp);
+        };
+        rowSplitter.addEventListener("pointermove", onMove);
+        rowSplitter.addEventListener("pointerup", onUp);
+      });
+
+      const startRawResize = (event) => {
+        event.preventDefault();
+        rawSplitter.setPointerCapture(event.pointerId);
+        rawSplitter.classList.add("dragging");
+        const onMove = (moveEvent) => {
+          const rect = rawWrap.getBoundingClientRect();
+          const labelHeight = rawWrap.querySelector("label").getBoundingClientRect().height;
+          const toolbarHeight = rawWrap.querySelector(".toolbar").getBoundingClientRect().height;
+          const minEditor = 80;
+          const maxEditor = Math.max(minEditor, rect.height - labelHeight - toolbarHeight - 8);
+          const next = Math.min(Math.max(moveEvent.clientY - rect.top - labelHeight, minEditor), maxEditor);
+          rawWrap.style.setProperty("--raw-height", `${next}px`);
+        };
+        const onUp = () => {
+          rawSplitter.classList.remove("dragging");
+          rawSplitter.removeEventListener("pointermove", onMove);
+          rawSplitter.removeEventListener("pointerup", onUp);
+        };
+        rawSplitter.addEventListener("pointermove", onMove);
+        rawSplitter.addEventListener("pointerup", onUp);
+      };
+      rawSplitter.addEventListener("pointerdown", startRawResize);
+      rawToolbar.addEventListener("pointerdown", (event) => {
+        if (event.target.closest("button")) return;
+        startRawResize(event);
+      });
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (!event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undo();
+      }
+      if (event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+      }
+    });
+
+    initSplitters();
+    updateTemplateModeSelect();
+    updateHistoryButtons();
+    loadAll().catch((err) => alert("加载失败：" + err.message));
+  </script>
+</body>
+</html>
+

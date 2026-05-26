@@ -1,0 +1,16 @@
+# Local data files
+*.jsonl
+dataset*.jsonl
+
+# Python/runtime cache
+__pycache__/
+*.pyc
+
+# IDE and local logs
+.idea/
+server_out.log
+server_err.log
+
+# OS noise
+Thumbs.db
+.DS_Store
