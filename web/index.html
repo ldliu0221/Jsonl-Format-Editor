@@ -583,6 +583,30 @@
       return "";
     }
 
+    function valueKind(value) {
+      if (Array.isArray(value)) return "array";
+      if (value && typeof value === "object") return "object";
+      if (typeof value === "number") return "number";
+      if (typeof value === "boolean") return "boolean";
+      return "string";
+    }
+
+    function parseKind(input, fallback = "string") {
+      const text = String(input || "").trim().toLowerCase();
+      if (["object", "对象", "字段", "加字段"].includes(text)) return "object";
+      if (["array", "数组", "列表", "加一项"].includes(text)) return "array";
+      if (["number", "num", "数字"].includes(text)) return "number";
+      if (["boolean", "bool", "布尔"].includes(text)) return "boolean";
+      if (["string", "text", "文本", ""].includes(text)) return fallback;
+      return fallback;
+    }
+
+    function askNewValueKind(label, fallback = "string") {
+      const answer = prompt(`${label}类型：文本 / 对象 / 数组 / 数字 / 布尔`, fallback === "object" ? "对象" : fallback === "array" ? "数组" : "文本");
+      if (answer === null) return null;
+      return parseKind(answer, fallback);
+    }
+
     function defaultRecord() {
       return { id: `new-${Date.now()}`, input: "", expected_issues: [] };
     }
@@ -811,6 +835,16 @@
         note.textContent = isArray ? `Array(${value.length})` : "Object";
         row.appendChild(note);
 
+        if (path.length) {
+          const type = makeTypeSelect(valueKind(value), (kind) => {
+            pushUndo();
+            pathSet(current, path, defaultValue(kind));
+            syncRaw();
+            renderTree();
+          });
+          row.appendChild(type);
+        }
+
         const add = document.createElement("button");
         add.className = "small";
         add.textContent = isArray ? "加一项" : "加字段";
@@ -880,6 +914,8 @@
       const type = document.createElement("select");
       type.className = "small";
       type.innerHTML = '<option value="string">文本</option><option value="number">数字</option><option value="boolean">布尔</option><option value="object">对象</option><option value="array">数组</option>';
+      type.value = valueKind(value);
+      type.title = "切换为对象或数组后，可以继续加字段/加一项";
       type.onchange = () => { pushUndo(); pathSet(current, path, defaultValue(type.value)); syncRaw(); renderTree(); };
       row.appendChild(type);
 
@@ -894,16 +930,30 @@
       return wrap;
     }
 
+    function makeTypeSelect(kind, onChange) {
+      const type = document.createElement("select");
+      type.className = "small";
+      type.innerHTML = '<option value="string">文本</option><option value="number">数字</option><option value="boolean">布尔</option><option value="object">对象</option><option value="array">数组</option>';
+      type.value = kind;
+      type.title = "切换字段类型";
+      type.onchange = () => onChange(type.value);
+      return type;
+    }
+
     function addChild(path, isArray) {
       const target = path.length ? pathGet(current, path) : current;
       const beforeState = snapshotState();
       if (isArray) {
-        target.push({});
+        const kind = askNewValueKind("新项目", "object");
+        if (kind === null) return;
+        target.push(defaultValue(kind));
       } else {
         const key = prompt("请输入字段名", "new_field");
         if (!key) return;
         if (Object.prototype.hasOwnProperty.call(target, key) && !confirm("字段已存在，是否覆盖？")) return;
-        target[key] = "";
+        const kind = askNewValueKind("新字段", "string");
+        if (kind === null) return;
+        target[key] = defaultValue(kind);
       }
       pushUndo(beforeState);
       syncRaw();
