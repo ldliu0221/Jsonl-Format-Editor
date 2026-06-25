@@ -78,6 +78,22 @@
       padding: 9px 12px; color: #53627a; background: #f8fbff; border-bottom: 1px solid var(--soft-line);
       font-size: 12px;
     }
+    .quality-panel {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+      padding: 10px 12px; border-bottom: 1px solid var(--soft-line); background: #ffffff;
+    }
+    .quality-card {
+      min-width: 0; padding: 8px 10px; border: 1px solid var(--soft-line); border-radius: 8px;
+      background: #fbfcff;
+    }
+    .quality-card.warn { border-color: #ffe1a8; background: #fffbeb; }
+    .quality-card.bad { border-color: #ffd1cc; background: var(--red-soft); }
+    .quality-label { color: var(--muted); font-size: 12px; line-height: 1.3; }
+    .quality-value { margin-top: 4px; color: var(--text); font-size: 18px; font-weight: 700; line-height: 1.2; }
+    .quality-detail {
+      margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.35;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .searchbar {
       display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 12px;
       border-bottom: 1px solid var(--line); background: #ffffff;
@@ -217,6 +233,7 @@
       .splitter { display: none; }
       .panel { min-height: 520px; }
       .key { min-width: 90px; }
+      .quality-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .main-toolbar { align-items: stretch; }
       .tool-group { flex: 1 1 100%; border-right: 0; padding-right: 0; }
       .tool-group.right { margin-left: 0; justify-content: flex-start; }
@@ -255,6 +272,7 @@
         </div>
       </div>
       <div class="notice">隐私提示：文件只在你的浏览器中处理，不会上传到任何服务器。</div>
+      <div class="quality-panel" id="qualityPanel" aria-label="数据质量摘要"></div>
       <div class="left-body">
         <div class="searchbar">
           <input id="searchInput" placeholder="搜索 id、文本、字段内容" />
@@ -514,6 +532,92 @@
       maybeRestoreDraft();
     }
 
+    function analyzeRecords() {
+      const idCounts = new Map();
+      const missingIds = [];
+      const fieldCounts = new Map();
+      let objectRows = 0;
+
+      records.forEach((record, index) => {
+        if (record && typeof record === "object" && !Array.isArray(record)) {
+          objectRows += 1;
+          Object.keys(record).forEach((key) => {
+            fieldCounts.set(key, (fieldCounts.get(key) || 0) + 1);
+          });
+        }
+        const id = record && typeof record === "object" ? record.id : undefined;
+        if (id === undefined || id === null || String(id).trim() === "") {
+          missingIds.push(index + 1);
+        } else {
+          const text = String(id);
+          idCounts.set(text, (idCounts.get(text) || 0) + 1);
+        }
+      });
+
+      const duplicates = [...idCounts.entries()]
+        .filter(([, count]) => count > 1)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      const topFields = [...fieldCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, 4);
+
+      return { duplicates, missingIds, topFields, objectRows };
+    }
+
+    function sampleList(items, formatter = (value) => value, limit = 3) {
+      const shown = items.slice(0, limit).map(formatter);
+      const rest = items.length - shown.length;
+      return shown.join("、") + (rest > 0 ? ` 等 ${rest} 项` : "");
+    }
+
+    function updateQualityPanel() {
+      const panel = $("qualityPanel");
+      if (!panel) return;
+      if (!records.length) {
+        panel.innerHTML = `
+          <div class="quality-card"><div class="quality-label">记录总数</div><div class="quality-value">0</div><div class="quality-detail">等待导入 JSONL</div></div>
+          <div class="quality-card"><div class="quality-label">ID 检查</div><div class="quality-value">-</div><div class="quality-detail">载入后自动分析</div></div>
+          <div class="quality-card"><div class="quality-label">字段覆盖</div><div class="quality-value">-</div><div class="quality-detail">统计常见字段</div></div>
+          <div class="quality-card"><div class="quality-label">导出提示</div><div class="quality-value">本地</div><div class="quality-detail">浏览器端处理，不上传</div></div>
+        `;
+        return;
+      }
+
+      const report = analyzeRecords();
+      const duplicateCount = report.duplicates.length;
+      const missingCount = report.missingIds.length;
+      const idClass = duplicateCount || missingCount ? "bad" : "";
+      const fieldDetail = report.topFields.length
+        ? report.topFields.map(([key, count]) => `${key} ${count}/${records.length}`).join(" · ")
+        : "未发现对象字段";
+      const issueDetail = [
+        duplicateCount ? `重复：${sampleList(report.duplicates, ([id, count]) => `${id}×${count}`)}` : "",
+        missingCount ? `缺失：第 ${sampleList(report.missingIds, (line) => line)} 条` : "",
+      ].filter(Boolean).join("；") || "未发现重复或缺失 id";
+
+      panel.innerHTML = `
+        <div class="quality-card"><div class="quality-label">记录总数</div><div class="quality-value">${records.length}</div><div class="quality-detail" title="${escapeHtml(sourceName)}">${escapeHtml(sourceName)}</div></div>
+        <div class="quality-card ${idClass}"><div class="quality-label">ID 检查</div><div class="quality-value">${duplicateCount + missingCount}</div><div class="quality-detail" title="${escapeHtml(issueDetail)}">${escapeHtml(issueDetail)}</div></div>
+        <div class="quality-card"><div class="quality-label">字段覆盖</div><div class="quality-value">${report.topFields.length}</div><div class="quality-detail" title="${escapeHtml(fieldDetail)}">${escapeHtml(fieldDetail)}</div></div>
+        <div class="quality-card ${records.length !== report.objectRows ? "warn" : ""}"><div class="quality-label">对象记录</div><div class="quality-value">${report.objectRows}/${records.length}</div><div class="quality-detail">${records.length === report.objectRows ? "全部为 JSON 对象" : "存在数组或基础值记录"}</div></div>
+      `;
+    }
+
+    function qualityExportWarning() {
+      const report = analyzeRecords();
+      const messages = [];
+      if (report.duplicates.length) {
+        messages.push(`存在重复 id：${sampleList(report.duplicates, ([id, count]) => `${id}×${count}`, 5)}`);
+      }
+      if (report.missingIds.length) {
+        messages.push(`存在缺失 id 的记录：第 ${sampleList(report.missingIds, (line) => line, 8)} 条`);
+      }
+      if (records.length && report.objectRows !== records.length) {
+        messages.push("存在非对象记录，部分下游工具可能无法按字段读取。");
+      }
+      return messages.join("\n");
+    }
+
     function renderList() {
       const list = $("recordList");
       list.innerHTML = "";
@@ -538,6 +642,7 @@
         list.innerHTML = '<div class="empty">没有匹配的记录</div>';
       }
       $("status").textContent = filterQuery ? `${shown} / ${records.length} 条记录` : `${records.length} 条记录`;
+      updateQualityPanel();
     }
 
     function selectRecord(index) {
@@ -1167,6 +1272,8 @@
           current = parseRawJson();
           records[selected] = structuredClone(current);
         }
+        const warning = qualityExportWarning();
+        if (warning && !confirm(`${warning}\n\n仍然导出 JSONL 吗？`)) return;
         await syncServerRecords();
         const blob = new Blob([dumpsJsonl(records)], { type: "application/jsonl;charset=utf-8" });
         const filename = defaultExportName();
